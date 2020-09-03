@@ -1,0 +1,277 @@
+org 0000h
+ljmp main ;sare la programul principal
+
+org 0003h
+	dec R5 ;decrementeaza temperatura prin ajutorul butonului - ,subrutina INT 0
+	reti
+	
+org 0013h
+	inc R5 ;incrementeaza temperatura prin ajutorul butonului + ,subrutina INT 1
+	reti
+	
+
+org 300h
+	
+;****************************************** Text Afisare ********************************************************************	
+
+	text: db "Temp:",00h
+		
+org 350h
+	
+;****************************************** Text TEMP SET ********************************************************************	
+
+	text1: db "Temp set:",00h
+		
+org 0600h 
+	
+main:	
+	
+
+
+;**************************************** ACTIVARE INTRERUPERI ******************************************************************
+
+mov IE,#10000101b  ;intrerupei active INT0 si INT1
+setb IT0           ;intrerupere (short press)
+setb IT1           ;intrerupere (short press)
+
+
+;******************************************** Denumire pini  *****************************************
+
+
+RS equ P2.0
+E equ P2.1
+Plus equ P3.2
+Minus equ P3.3
+EOC equ P2.2
+OE equ P2.3
+START equ P2.4
+Control equ P2.5
+
+
+;**************************************** ACTIVARE INTRERUPERI ******************************************************************
+
+mov IE,#10000101b  ;intrerupei active INT0 si INT1
+setb IT0           ;intrerupere (short press)
+setb IT1           ;intrerupere (short press)
+
+
+;*********************************************initializare LCD *****************************************************************
+mov a,#38h   ;Instructiune Function set ,2 linii si 5x7(pt un caracter)
+acall Scriere_Instructiuni
+acall delay 
+
+mov a,#0Eh            ; instructiune Display ON ,Cursor ON
+acall Scriere_Instructiuni
+acall delay 
+
+mov a,#01h   ;seteaza memeoria DDRAM la adresa 00h ,CLEAR DISPLAY 
+acall Scriere_Instructiuni
+acall delay 
+
+mov a,#06h    ;ENTRY MODE  shift-eaza cursorul catre dreapta
+acall Scriere_Instructiuni
+acall delay 
+
+;***************************Afisare LCD text "Temperatura :"****************************************
+
+mov dptr,#300h
+
+afisare:
+mov a,00h                        ;punem in acc 0 pentru a nu depasi 300h
+movc a,@a+dptr                   ;luam prima valoare din sir
+acall Scriere_Date               ;Scriem date
+acall delay                      ;apleam delay 
+inc DPTR                         ;trecem la valoarea urmatoare din memorie
+cjne a,#00h,afisare              ;cand ajungem la final mergem mai departe 
+
+;***************************Afisare LCD text "Temperatura :"****************************************
+
+mov dptr,#350h
+
+mov a,#0C0h      ;setam cursor la pozitia dorita
+acall Scriere_Instructiuni
+acall delay
+
+mov R5,#22 ;temperatura initiala de referinta
+
+
+afisare_set:
+mov a,00h                        ;punem in acc 0 pentru a nu depasi 300h
+movc a,@a+dptr                   ;luam prima valoare din sir
+acall Scriere_Date               ;Scriem date
+acall delay                      ;apleam delay 
+inc DPTR                         ;trecem la valoarea urmatoare din memorie
+cjne a,#00h,afisare_set              ;cand ajungem la final mergem mai departe
+
+;setare cursor scriere cifre
+
+
+
+
+;******************************* Afisare caractere preluate de la ADC ****************************************
+
+mov P0,#0ffh    ;setam portul P0 ca si port de intrare 
+
+eticheta:
+mov a,R5
+mov R7,a
+acall HEX_ascii
+;punem valoarea de referinta la valoarea de 22 de grade
+
+mov a,#0C9h      ;setam cursor la pozitia dorita
+acall Scriere_Instructiuni
+acall delay
+
+mov a,R0        ;afisam partea high a numarului citit pe portul P1
+acall Scriere_Date
+acall delay
+
+mov a,#0CAh      ;setam cursor la pozitia dorita
+acall Scriere_Instructiuni
+acall delay
+
+mov a,R1        ;afisam partea high a numarului citit pe portul P1
+acall Scriere_Date
+acall delay
+
+mov R0,#00h
+mov R1,#00h
+
+
+acall Citire_Valoare_ADC
+mov b,#5
+div ab 
+mov R6,a
+
+acall check
+acall HEX_ascii
+
+mov a,#85h      ;setam cursor la pozitia dorita
+acall Scriere_Instructiuni
+acall delay
+
+mov a,R0        ;afisam partea high a numarului citit pe portul P1
+acall Scriere_Date
+acall delay
+
+mov a,#86h   ;setam cursor
+acall Scriere_Instructiuni
+acall delay
+
+mov a,R1   ;afisam partea low a numarului citit pe portul P1
+acall Scriere_Date
+acall delay
+
+
+sjmp eticheta
+
+;***************************** SUBRUTINE ***************************************************
+
+check:
+mov a,R6
+dec a
+clr c   ;facem carry zero pentru a compara temperaturile
+mov b,R6
+subb a,b
+jnc stop_incalzire
+
+incalzire:
+setb Control
+jmp gata
+
+stop_incalzire:
+clr Control 
+
+gata:
+mov a,R6
+ret
+
+
+
+
+
+Scriere_Instructiuni:
+
+mov P1,a  ;  trimitem comanda pe portul P2
+clr RS ;setam RS ca si instructiune input
+;clr P3.1  ;setam WR/RD  in modul scriere
+
+setb E  ;activam enable-ul
+acall delay   ;40ms
+clr E
+ret
+
+
+
+Scriere_Date:
+setb RS  ;RS in modul data input
+;clr P3.1 ;setam WR/RD in modul scriere
+mov P1 ,a  ;preluamdin acumulator caracterele pe care dorim sa le vizulaizam 
+
+
+setb E  ;activam enable 
+acall delay  ;15ms
+clr E  ;oprim enable
+ret
+
+delay:
+
+clr TR0
+mov TMOD,#01h
+mov TH0,#0FCh
+mov TL0,#67h
+setb TR0
+
+here:
+jnb TF0 ,here
+
+clr TR0
+clr TF0
+ret 
+
+CONVERSIE:
+
+
+mov b,#5
+div ab 
+;********************************** Separam cifrele numarului *********************
+mov B, #10
+div AB
+add a,#30h        ;cod ascii partea high
+mov r0,a
+mov a,b
+add a,#30h       ;cod ascii partea low
+mov r1,a 
+ret 
+
+
+HEX_ascii:
+mov B, #10
+div AB
+add a,#30h        ;cod ascii partea high
+mov r0,a
+mov a,b
+add a,#30h       ;cod ascii partea low
+mov r1,a 
+ret 
+
+
+
+
+
+
+;Citim valorile convertite de adc pe portul 1
+
+Citire_Valoare_ADC:
+
+setb START ;pornim conversia START
+acall delay
+clr START  ;am transmis impulsul de start
+
+astept: jnb EOC, astept  ;astept EOC
+setb OE  ;activez OE
+acall delay
+mov A, P0  ;salvez in acc ce am pe port P1
+clr OE  ;dezacivez OE
+ret
+end
